@@ -18,7 +18,6 @@ let package = Package(
     ],
     dependencies: [
         // Main depedencies
-        //.package(url: "https://github.com/Boilertalk/secp256k1.swift.git", from: "0.1.0"),
         .package(url: "https://github.com/carlosbleck/secp256k1.swift", branch: "master"),
         .package(url: "https://github.com/bitmark-inc/tweetnacl-swiftwrap.git", from: "1.0.2"),
         .package(url: "https://github.com/bigearsenal/task-retrying-swift.git", from: "2.0.0"),
@@ -30,7 +29,6 @@ let package = Package(
         .target(
             name: "SolanaSwift",
             dependencies: [
-                //.product(name: "secp256k1", package: "secp256k1.swift"),
                 .product(name: "secp256k1_solana", package: "secp256k1.swift"),
                 .product(name: "TweetNacl", package: "tweetnacl-swiftwrap"),
                 .product(name: "Task_retrying", package: "task-retrying-swift"),
