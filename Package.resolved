@@ -19,12 +19,12 @@
       }
     },
     {
-      "identity" : "swift-secp256k1-solana",
+      "identity" : "swift-secp256k1",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/carlosbleck/swift-secp256k1-solana",
+      "location" : "https://github.com/21-DOT-DEV/swift-secp256k1",
       "state" : {
-        "branch" : "master",
-        "revision" : "7c80507d0c6afca53708ebf6822d7cb71dbaf90a"
+        "revision" : "8c62aba8a3011c9bcea232e5ee007fb0b34a15e2",
+        "version" : "0.21.1"
       }
     },
     {
