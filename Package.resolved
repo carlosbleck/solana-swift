@@ -1,15 +1,6 @@
 {
   "pins" : [
     {
-      "identity" : "secp256k1.swift",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/carlosbleck/secp256k1.swift",
-      "state" : {
-        "branch" : "master",
-        "revision" : "7c80507d0c6afca53708ebf6822d7cb71dbaf90a"
-      }
-    },
-    {
       "identity" : "swift-docc-plugin",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-docc-plugin",
@@ -25,6 +16,15 @@
       "state" : {
         "revision" : "b45d1f2ed151d057b54504d653e0da5552844e34",
         "version" : "1.0.0"
+      }
+    },
+    {
+      "identity" : "swift-secp256k1-solana",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/carlosbleck/swift-secp256k1-solana",
+      "state" : {
+        "branch" : "master",
+        "revision" : "7c80507d0c6afca53708ebf6822d7cb71dbaf90a"
       }
     },
     {
