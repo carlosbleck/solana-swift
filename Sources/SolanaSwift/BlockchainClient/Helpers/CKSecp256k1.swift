@@ -1,5 +1,6 @@
 import Foundation
-import P256K
+import secp256k1
+
 
 struct CKSecp256k1 {
     /*
@@ -32,25 +33,49 @@ struct CKSecp256k1 {
          return data;
      }
      */
-    static func generatePublicKey(withPrivateKey privateKeyData: Data, compression isCompression: Bool) -> Data? {
-        do {
-            // Create private key from raw 32-byte data
-            let privateKey = try P256K.Signing.PrivateKey(dataRepresentation: privateKeyData)
-            
-            // Get public key
-            let publicKey = privateKey.publicKey
-            
-            // Return the desired representation
-            if isCompression {
-                return publicKey.dataRepresentation    // 33 bytes
-            } else {
-                return publicKey.uncompressedRepresentation  // 65 bytes
-            }
-            
-        } catch {
-            print("Error generating secp256k1/solana public key: \(error)")
+    static let context = secp256k1_context_create(UInt32(SECP256K1_CONTEXT_SIGN|SECP256K1_CONTEXT_VERIFY))
+    
+    static func generatePublicKey(withPrivateKey privateKeyData: Data,
+                                  compression isCompression: Bool) -> Data? {
+
+        guard let context = context else { return nil }
+
+        // --- 1. Prepare private key bytes ---
+        var privateKey = [UInt8](privateKeyData)
+        guard privateKey.count == 32 else { return nil }
+
+        // --- 2. Create secp256k1_pubkey ---
+        var pubkey = secp256k1_pubkey()
+
+        let createResult = secp256k1_ec_pubkey_create(context, &pubkey, &privateKey)
+        guard createResult == 1 else {
+            return nil // invalid private key
+        }
+
+        // --- 3. Prepare serialization buffer ---
+        var outputLength = isCompression ? 33 : 65
+        var output = Data(repeating: 0, count: outputLength)
+
+        let flags = UInt32(isCompression ? SECP256K1_EC_COMPRESSED : SECP256K1_EC_UNCOMPRESSED)
+
+        // --- 4. Serialize public key ---
+        let serializeResult = output.withUnsafeMutableBytes { outPtr -> Int32 in
+            let outBytes = outPtr.bindMemory(to: UInt8.self).baseAddress!
+
+            return secp256k1_ec_pubkey_serialize(
+                context,
+                outBytes,
+                &outputLength,
+                &pubkey,
+                flags
+            )
+        }
+
+        guard serializeResult == 1 else {
             return nil
         }
+
+        return output
     }
 
 
@@ -80,20 +105,48 @@ struct CKSecp256k1 {
      }
      */
     static func compactSignData(msgData: Data, withPrivateKey privateKeyData: Data) -> Data? {
-        do {
-            // Create secp256k1 private key
-            let privateKey = try P256K.Signing.PrivateKey(dataRepresentation: privateKeyData)
 
-            // Sign message
-            let signature = try privateKey.signature(for: msgData)
+        guard let context = context else { return nil }
 
-            // Return 64-byte compact signature (R||S)
-            return signature.dataRepresentation
+        // Must be 32-bytes message hash and 32-byte private key
+        var msg = [UInt8](msgData)
+        var privateKey = [UInt8](privateKeyData)
+        guard msg.count == 32, privateKey.count == 32 else { return nil }
 
-        } catch {
-            print("P256K signing error:", error)
+        // 1. Create signature struct
+        var signature = secp256k1_ecdsa_signature()
+
+        // 2. Sign message
+        let signResult = secp256k1_ecdsa_sign(
+            context,
+            &signature,
+            &msg,
+            &privateKey,
+            nil,
+            nil
+        )
+
+        guard signResult == 1 else {
             return nil
         }
+
+        // 3. Serialize to compact (64 bytes)
+        var compactSig = Data(repeating: 0, count: 64)
+
+        let serializeResult = compactSig.withUnsafeMutableBytes { buf -> Int32 in
+            let sigPtr = buf.bindMemory(to: UInt8.self).baseAddress!
+            return secp256k1_ecdsa_signature_serialize_compact(
+                context,
+                sigPtr,
+                &signature
+            )
+        }
+
+        guard serializeResult == 1 else {
+            return nil
+        }
+
+        return compactSig
     }
 
     /*
@@ -124,49 +177,43 @@ struct CKSecp256k1 {
         withMessageData msgData: Data,
         usePublickKey pubKeyData: Data
     ) -> Int32 {
-        do {
-            // Detect public key format based on length
-            let keyFormat: P256K.Format
-            switch pubKeyData.count {
-            case 33:
-                keyFormat = .compressed
-            case 65:
-                keyFormat = .uncompressed
-            default:
-                return -3 // invalid public key format
-            }
 
-            // 1. Parse the public key
-            let publicKey = try P256K.Signing.PublicKey(
-                dataRepresentation: pubKeyData,
-                format: keyFormat
-            )
+        guard let context = context else { return -1 }
 
-            // 2. Parse the compact signature (64 bytes: r||s)
-            let signature = try P256K.Signing.ECDSASignature(
-                dataRepresentation: sigData
-            )
+        // Must be compact ECDSA signature (64 bytes)
+        var sigBytes = [UInt8](sigData)
+        var msgBytes = [UInt8](msgData)
+        var pubBytes = [UInt8](pubKeyData)
 
-            // 3. Perform verification
-            let isValid = publicKey.isValidSignature(signature, for: msgData)
+        // 1. Parse pubkey
+        var publicKey = secp256k1_pubkey()
+        let pubResult = secp256k1_ec_pubkey_parse(
+            context,
+            &publicKey,
+            &pubBytes,
+            pubKeyData.count
+        )
 
-            return isValid ? 1 : 0
+        if pubResult != 1 { return -3 }
 
-        } catch {
-            // Match your old behavior:
-            // -3 = pubkey parse error
-            // -4 = signature parse error
+        // 2. Parse compact signature
+        var signature = secp256k1_ecdsa_signature()
+        let sigResult = secp256k1_ecdsa_signature_parse_compact(
+            context,
+            &signature,
+            &sigBytes
+        )
 
-            let errorString = "\(error)"
+        if sigResult != 1 { return -4 }
 
-            if errorString.contains("public key") {
-                return -3
-            }
-            if errorString.contains("signature") {
-                return -4
-            }
+        // 3. Verify signature
+        let verifyResult = secp256k1_ecdsa_verify(
+            context,
+            &signature,
+            &msgBytes,
+            &publicKey
+        )
 
-            return -5 // Generic parse error fallback
-        }
+        return verifyResult  // 1 = valid, 0 = invalid
     }
 }
